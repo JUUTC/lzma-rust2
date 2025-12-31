@@ -84,9 +84,22 @@ impl LzDecoder {
             }
         );
 
-        // SAFETY: We use get() for bounds checking which is optimized away when the
-        // offset is guaranteed to be in bounds by the algorithm invariants.
-        self.buf.get(offset).copied().unwrap_or(0)
+        // SAFETY: When optimization is enabled, we use unchecked access for the
+        // common case. The offset calculation is bounded by buf_size (dictionary size).
+        // Invalid streams will be caught by the dist overflow check in repeat().
+        #[cfg(feature = "optimization")]
+        {
+            if offset < self.buf.len() {
+                // SAFETY: We just verified offset < buf.len()
+                unsafe { *self.buf.get_unchecked(offset) }
+            } else {
+                0
+            }
+        }
+        #[cfg(not(feature = "optimization"))]
+        {
+            self.buf.get(offset).copied().unwrap_or(0)
+        }
     }
 
     #[inline(always)]

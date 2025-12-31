@@ -202,6 +202,24 @@ impl LiteralSubDecoder {
         let mut symbol: u32 = 1;
         let liter = coder.state.is_literal();
         if liter {
+            // Unrolled literal decoding loop - exactly 8 iterations are always needed.
+            // Starting with symbol=1, each iteration: symbol = (symbol << 1) | bit
+            // After i iterations, symbol is in range [2^i, 2^(i+1)-1]
+            // After 8 iterations: symbol is in range [256, 511], so symbol >= 0x100
+            // This is a common C++ LZMA optimization for better instruction pipelining.
+            #[cfg(feature = "optimization")]
+            {
+                symbol = (symbol << 1) | rc.decode_bit(&mut self.coder.probs[symbol as usize]) as u32;
+                symbol = (symbol << 1) | rc.decode_bit(&mut self.coder.probs[symbol as usize]) as u32;
+                symbol = (symbol << 1) | rc.decode_bit(&mut self.coder.probs[symbol as usize]) as u32;
+                symbol = (symbol << 1) | rc.decode_bit(&mut self.coder.probs[symbol as usize]) as u32;
+                symbol = (symbol << 1) | rc.decode_bit(&mut self.coder.probs[symbol as usize]) as u32;
+                symbol = (symbol << 1) | rc.decode_bit(&mut self.coder.probs[symbol as usize]) as u32;
+                symbol = (symbol << 1) | rc.decode_bit(&mut self.coder.probs[symbol as usize]) as u32;
+                symbol = (symbol << 1) | rc.decode_bit(&mut self.coder.probs[symbol as usize]) as u32;
+                debug_assert!(symbol >= 0x100, "symbol should be >= 256 after 8 iterations");
+            }
+            #[cfg(not(feature = "optimization"))]
             loop {
                 let b = rc.decode_bit(&mut self.coder.probs[symbol as usize]) as u32;
                 symbol = (symbol << 1) | b;
