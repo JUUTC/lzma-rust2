@@ -43,10 +43,12 @@ impl LzmaDecoder {
         self.rep_len_decoder.reset();
     }
 
+    #[inline(always)]
     pub(crate) fn end_marker_detected(&self) -> bool {
         self.coder.reps[0] == -1
     }
 
+    #[inline]
     pub(crate) fn decode<R: RangeReader>(
         &mut self,
         lz: &mut LzDecoder,
@@ -74,6 +76,7 @@ impl LzmaDecoder {
         Ok(())
     }
 
+    #[inline]
     fn decode_match<R: RangeReader>(&mut self, pos_state: u32, rc: &mut RangeDecoder<R>) -> u32 {
         self.coder.state.update_match();
         self.coder.reps[3] = self.coder.reps[2];
@@ -104,6 +107,7 @@ impl LzmaDecoder {
         len as _
     }
 
+    #[inline]
     fn decode_rep_match<R: RangeReader>(
         &mut self,
         pos_state: u32,
@@ -161,6 +165,7 @@ impl LiteralDecoder {
         }
     }
 
+    #[inline(always)]
     fn decode<R: RangeReader>(
         &mut self,
         coder: &mut LzmaCoder,
@@ -187,6 +192,7 @@ impl LiteralSubDecoder {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn decode<R: RangeReader>(
         &mut self,
         coder: &mut LzmaCoder,
@@ -229,6 +235,7 @@ impl LiteralSubDecoder {
 }
 
 impl LengthCoder {
+    #[inline(always)]
     fn decode<R: RangeReader>(&mut self, pos_state: usize, rc: &mut RangeDecoder<R>) -> i32 {
         if rc.decode_bit(&mut self.choice[0]) == 0 {
             return rc

@@ -45,43 +45,55 @@ impl LzDecoder {
         self.buf[self.buf_size - 1] = 0;
     }
 
+    #[inline(always)]
     pub(crate) fn set_limit(&mut self, out_max: usize) {
         self.limit = (out_max + self.pos).min(self.buf_size);
     }
 
+    #[inline(always)]
     pub(crate) fn has_space(&self) -> bool {
         self.pos < self.limit
     }
 
+    #[inline(always)]
     pub(crate) fn has_pending(&self) -> bool {
         self.pending_len > 0
     }
 
+    #[inline(always)]
     pub(crate) fn get_pos(&self) -> usize {
         self.pos
     }
 
+    #[inline(always)]
     pub(crate) fn get_byte(&self, dist: usize) -> u8 {
-        let offset = if dist >= self.pos {
-            self.buf_size
-                .saturating_add(self.pos)
-                .saturating_sub(dist)
-                .saturating_sub(1)
-        } else {
-            self.pos.saturating_sub(dist).saturating_sub(1)
-        };
+        // Branchless calculation of offset - avoids branch misprediction on the hot path
+        let wrap_mask = (dist >= self.pos) as usize;
+        let offset = self.pos.wrapping_sub(dist).wrapping_sub(1)
+            .wrapping_add(self.buf_size * wrap_mask);
 
+        // SAFETY: We use get() for bounds checking which is optimized away when the
+        // offset is guaranteed to be in bounds by the algorithm invariants.
         self.buf.get(offset).copied().unwrap_or(0)
     }
 
+    #[inline(always)]
     pub(crate) fn put_byte(&mut self, b: u8) {
-        self.buf[self.pos] = b;
-        self.pos += 1;
-        if self.full < self.pos {
-            self.full = self.pos;
+        // SAFETY: pos is always < buf_size due to limit checking in set_limit and has_space
+        #[cfg(feature = "optimization")]
+        unsafe {
+            *self.buf.get_unchecked_mut(self.pos) = b;
         }
+        #[cfg(not(feature = "optimization"))]
+        {
+            self.buf[self.pos] = b;
+        }
+        self.pos += 1;
+        // Use branchless max for updating full
+        self.full = self.full.max(self.pos);
     }
 
+    #[inline]
     pub(crate) fn repeat(&mut self, dist: usize, len: usize) -> crate::Result<()> {
         if dist >= self.full {
             return Err(error_other("dist overflow"));
@@ -115,25 +127,24 @@ impl LzDecoder {
         debug_assert!(left > 0);
 
         if dist >= left {
-            // No overlap possible. We can copy directly.
+            // No overlap possible. We can copy directly using split_at_mut.
             let (src_part, dst_part) = self.buf.split_at_mut(self.pos);
             dst_part[..left].copy_from_slice(&src_part[back..back + left]);
             self.pos += left;
         } else {
-            loop {
-                let copy_size = left.min(self.pos - back);
+            // Overlapping copy - optimize for small distances (common in LZMA)
+            // Distance+1 is the repeat period, so we copy in chunks of that size
+            let period = dist + 1;
+            while left > 0 {
+                let copy_size = left.min(period);
                 self.buf.copy_within(back..back + copy_size, self.pos);
                 self.pos += copy_size;
                 left -= copy_size;
-                if left == 0 {
-                    break;
-                }
             }
         }
 
-        if self.full < self.pos {
-            self.full = self.pos;
-        }
+        // Use branchless max for updating full
+        self.full = self.full.max(self.pos);
         Ok(())
     }
 

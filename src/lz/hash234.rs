@@ -74,18 +74,22 @@ impl Hash234 {
         self.hash4_value = (tmp & self.hash4_mask) as i32;
     }
 
+    #[inline(always)]
     pub(crate) fn get_hash2_pos(&self) -> i32 {
         self.hash2_table[self.hash2_value as usize]
     }
 
+    #[inline(always)]
     pub(crate) fn get_hash3_pos(&self) -> i32 {
         self.hash3_table[self.hash3_value as usize]
     }
 
+    #[inline(always)]
     pub(crate) fn get_hash4_pos(&self) -> i32 {
         self.hash4_table[self.hash4_value as usize]
     }
 
+    #[inline(always)]
     pub(crate) fn update_tables(&mut self, pos: i32) {
         self.hash2_table[self.hash2_value as usize] = pos;
         self.hash3_table[self.hash3_value as usize] = pos;

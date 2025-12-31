@@ -82,27 +82,31 @@ impl<R: RangeReader> RangeDecoder<R> {
         (mask & 1) as i32
     }
 
+    #[inline(always)]
     pub(crate) fn decode_bit_tree(&mut self, probs: &mut [u16]) -> i32 {
         let mut symbol = 1;
+        let len = probs.len() as i32;
         loop {
             symbol = (symbol << 1) | self.decode_bit(&mut probs[symbol as usize]);
-            if symbol >= probs.len() as i32 {
+            if symbol >= len {
                 break;
             }
         }
-        symbol - probs.len() as i32
+        symbol - len
     }
 
+    #[inline(always)]
     pub(crate) fn decode_reverse_bit_tree(&mut self, probs: &mut [u16]) -> i32 {
         let mut symbol = 1;
         let mut i = 0;
         let mut result = 0;
+        let len = probs.len() as i32;
         loop {
             let bit = self.decode_bit(&mut probs[symbol as usize]);
             symbol = (symbol << 1) | bit;
             result |= bit << i;
             i += 1;
-            if symbol >= probs.len() as i32 {
+            if symbol >= len {
                 break;
             }
         }
