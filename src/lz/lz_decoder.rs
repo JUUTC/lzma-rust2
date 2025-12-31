@@ -68,9 +68,21 @@ impl LzDecoder {
     #[inline(always)]
     pub(crate) fn get_byte(&self, dist: usize) -> u8 {
         // Branchless calculation of offset - avoids branch misprediction on the hot path
+        // When dist >= pos, we need to wrap around: buf_size + pos - dist - 1
+        // When dist < pos, we just need: pos - dist - 1
         let wrap_mask = (dist >= self.pos) as usize;
         let offset = self.pos.wrapping_sub(dist).wrapping_sub(1)
             .wrapping_add(self.buf_size * wrap_mask);
+
+        // Debug assertion to verify branchless calculation correctness
+        debug_assert_eq!(
+            offset,
+            if dist >= self.pos {
+                self.buf_size + self.pos - dist - 1
+            } else {
+                self.pos - dist - 1
+            }
+        );
 
         // SAFETY: We use get() for bounds checking which is optimized away when the
         // offset is guaranteed to be in bounds by the algorithm invariants.
@@ -79,7 +91,12 @@ impl LzDecoder {
 
     #[inline(always)]
     pub(crate) fn put_byte(&mut self, b: u8) {
-        // SAFETY: pos is always < buf_size due to limit checking in set_limit and has_space
+        // SAFETY: This is safe because:
+        // 1. set_limit() ensures limit <= buf_size
+        // 2. has_space() checks pos < limit before any put_byte call
+        // 3. The decode loop in LzmaDecoder::decode checks has_space() before each iteration
+        // Therefore pos is always < buf_size when this function is called.
+        debug_assert!(self.pos < self.buf_size, "put_byte called with pos >= buf_size");
         #[cfg(feature = "optimization")]
         unsafe {
             *self.buf.get_unchecked_mut(self.pos) = b;
@@ -132,11 +149,13 @@ impl LzDecoder {
             dst_part[..left].copy_from_slice(&src_part[back..back + left]);
             self.pos += left;
         } else {
-            // Overlapping copy - optimize for small distances (common in LZMA)
-            // Distance+1 is the repeat period, so we copy in chunks of that size
-            let period = dist + 1;
+            // Overlapping copy - the source and destination regions overlap.
+            // We copy in chunks of size (dist + 1) which is the distance between
+            // the source and destination positions. This ensures each copy reads
+            // only from bytes that were written before the current copy operation.
+            let max_safe_copy = dist + 1;
             while left > 0 {
-                let copy_size = left.min(period);
+                let copy_size = left.min(max_safe_copy);
                 self.buf.copy_within(back..back + copy_size, self.pos);
                 self.pos += copy_size;
                 left -= copy_size;
