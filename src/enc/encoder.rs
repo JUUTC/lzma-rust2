@@ -269,6 +269,7 @@ impl LzmaEncoder {
         Ok(true)
     }
 
+    #[inline]
     fn encode_symbol<W: Write>(
         &mut self,
         rc: &mut RangeEncoder<W>,
@@ -306,6 +307,7 @@ impl LzmaEncoder {
         Ok(true)
     }
 
+    #[inline]
     fn encode_match<W: Write>(
         &mut self,
         dist: u32,
@@ -351,6 +353,7 @@ impl LzmaEncoder {
         Ok(())
     }
 
+    #[inline]
     fn encode_rep_match<W: Write>(
         &mut self,
         rep: u32,
@@ -401,6 +404,7 @@ impl LzmaEncoder {
         Ok(())
     }
 
+    #[inline]
     pub(crate) fn find_matches(&mut self) {
         self.data.read_ahead += 1;
         self.lz.find_matches();
@@ -642,6 +646,7 @@ impl LiteralEncoder {
         self.sub_encoders[0].encode(lz, data, coder, rc)
     }
 
+    #[inline(always)]
     pub(crate) fn encode<W: Write>(
         &mut self,
         lz: &LzEncoder,
@@ -657,6 +662,7 @@ impl LiteralEncoder {
         self.sub_encoders[i as usize].encode(lz, data, coder, rc)
     }
 
+    #[inline]
     pub(crate) fn get_price(
         &self,
         encoder: &LzmaEncoder,
@@ -692,6 +698,7 @@ impl LiteralSubEncoder {
         self.coder.reset()
     }
 
+    #[inline(always)]
     fn encode<W: Write>(
         &mut self,
         lz: &LzEncoder,
@@ -809,6 +816,7 @@ impl LengthEncoder {
         self.counters.fill(0);
     }
 
+    #[inline]
     fn encode<W: Write>(
         &mut self,
         len: u32,
@@ -834,6 +842,7 @@ impl LengthEncoder {
         Ok(())
     }
 
+    #[inline(always)]
     pub(crate) fn get_price(&self, len: usize, pos_state: usize) -> u32 {
         self.prices[pos_state][len - MATCH_LEN_MIN]
     }
