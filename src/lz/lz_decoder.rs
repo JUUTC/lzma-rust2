@@ -45,43 +45,85 @@ impl LzDecoder {
         self.buf[self.buf_size - 1] = 0;
     }
 
+    #[inline(always)]
     pub(crate) fn set_limit(&mut self, out_max: usize) {
         self.limit = (out_max + self.pos).min(self.buf_size);
     }
 
+    #[inline(always)]
     pub(crate) fn has_space(&self) -> bool {
         self.pos < self.limit
     }
 
+    #[inline(always)]
     pub(crate) fn has_pending(&self) -> bool {
         self.pending_len > 0
     }
 
+    #[inline(always)]
     pub(crate) fn get_pos(&self) -> usize {
         self.pos
     }
 
+    #[inline(always)]
     pub(crate) fn get_byte(&self, dist: usize) -> u8 {
-        let offset = if dist >= self.pos {
-            self.buf_size
-                .saturating_add(self.pos)
-                .saturating_sub(dist)
-                .saturating_sub(1)
-        } else {
-            self.pos.saturating_sub(dist).saturating_sub(1)
-        };
+        // Branchless calculation of offset - avoids branch misprediction on the hot path
+        // When dist >= pos, we need to wrap around: buf_size + pos - dist - 1
+        // When dist < pos, we just need: pos - dist - 1
+        let wrap_mask = (dist >= self.pos) as usize;
+        let offset = self.pos.wrapping_sub(dist).wrapping_sub(1)
+            .wrapping_add(self.buf_size * wrap_mask);
 
-        self.buf.get(offset).copied().unwrap_or(0)
-    }
+        // Debug assertion to verify branchless calculation correctness
+        debug_assert_eq!(
+            offset,
+            if dist >= self.pos {
+                self.buf_size + self.pos - dist - 1
+            } else {
+                self.pos - dist - 1
+            }
+        );
 
-    pub(crate) fn put_byte(&mut self, b: u8) {
-        self.buf[self.pos] = b;
-        self.pos += 1;
-        if self.full < self.pos {
-            self.full = self.pos;
+        // SAFETY: When optimization is enabled, we use unchecked access for the
+        // common case. The offset calculation is bounded by buf_size (dictionary size).
+        // Invalid streams will be caught by the dist overflow check in repeat().
+        #[cfg(feature = "optimization")]
+        {
+            if offset < self.buf.len() {
+                // SAFETY: We just verified offset < buf.len()
+                unsafe { *self.buf.get_unchecked(offset) }
+            } else {
+                0
+            }
+        }
+        #[cfg(not(feature = "optimization"))]
+        {
+            self.buf.get(offset).copied().unwrap_or(0)
         }
     }
 
+    #[inline(always)]
+    pub(crate) fn put_byte(&mut self, b: u8) {
+        // SAFETY: This is safe because:
+        // 1. set_limit() ensures limit <= buf_size
+        // 2. has_space() checks pos < limit before any put_byte call
+        // 3. The decode loop in LzmaDecoder::decode checks has_space() before each iteration
+        // Therefore pos is always < buf_size when this function is called.
+        debug_assert!(self.pos < self.buf_size, "put_byte called with pos >= buf_size");
+        #[cfg(feature = "optimization")]
+        unsafe {
+            *self.buf.get_unchecked_mut(self.pos) = b;
+        }
+        #[cfg(not(feature = "optimization"))]
+        {
+            self.buf[self.pos] = b;
+        }
+        self.pos += 1;
+        // Use branchless max for updating full
+        self.full = self.full.max(self.pos);
+    }
+
+    #[inline]
     pub(crate) fn repeat(&mut self, dist: usize, len: usize) -> crate::Result<()> {
         if dist >= self.full {
             return Err(error_other("dist overflow"));
@@ -115,25 +157,26 @@ impl LzDecoder {
         debug_assert!(left > 0);
 
         if dist >= left {
-            // No overlap possible. We can copy directly.
+            // No overlap possible. We can copy directly using split_at_mut.
             let (src_part, dst_part) = self.buf.split_at_mut(self.pos);
             dst_part[..left].copy_from_slice(&src_part[back..back + left]);
             self.pos += left;
         } else {
-            loop {
-                let copy_size = left.min(self.pos - back);
+            // Overlapping copy - the source and destination regions overlap.
+            // We copy in chunks of size (dist + 1) which is the distance between
+            // the source and destination positions. This ensures each copy reads
+            // only from bytes that were written before the current copy operation.
+            let max_safe_copy = dist + 1;
+            while left > 0 {
+                let copy_size = left.min(max_safe_copy);
                 self.buf.copy_within(back..back + copy_size, self.pos);
                 self.pos += copy_size;
                 left -= copy_size;
-                if left == 0 {
-                    break;
-                }
             }
         }
 
-        if self.full < self.pos {
-            self.full = self.pos;
-        }
+        // Use branchless max for updating full
+        self.full = self.full.max(self.pos);
         Ok(())
     }
 

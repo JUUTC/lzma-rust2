@@ -91,6 +91,7 @@ impl<W: Write> RangeEncoder<W> {
         Ok(())
     }
 
+    #[inline(always)]
     pub(crate) fn encode_bit(
         &mut self,
         probs: &mut [u16],
@@ -114,6 +115,7 @@ impl<W: Write> RangeEncoder<W> {
         Ok(())
     }
 
+    #[inline]
     pub(crate) fn encode_bit_tree(&mut self, probs: &mut [u16], symbol: u32) -> crate::Result<()> {
         let mut index = 1;
         let mut mask = probs.len() as u32;
@@ -134,6 +136,7 @@ impl<W: Write> RangeEncoder<W> {
         Ok(())
     }
 
+    #[inline]
     pub(crate) fn encode_reverse_bit_tree(
         &mut self,
         probs: &mut [u16],
@@ -153,6 +156,7 @@ impl<W: Write> RangeEncoder<W> {
         Ok(())
     }
 
+    #[inline]
     pub(crate) fn encode_direct_bits(&mut self, value: u32, mut count: u32) -> crate::Result<()> {
         loop {
             self.range >>= 1;

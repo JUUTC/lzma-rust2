@@ -287,6 +287,7 @@ impl LiteralSubCoder {
 }
 
 impl LiteralCoder {
+    #[inline(always)]
     pub fn new(lc: u32, lp: u32) -> Self {
         Self {
             lc,
@@ -294,6 +295,7 @@ impl LiteralCoder {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn get_sub_coder_index(&self, prev_byte: u32, pos: u32) -> u32 {
         let low = prev_byte >> (8 - self.lc);
         let high = (pos & self.literal_pos_mask) << self.lc;

@@ -82,27 +82,31 @@ impl<R: RangeReader> RangeDecoder<R> {
         (mask & 1) as i32
     }
 
+    #[inline(always)]
     pub(crate) fn decode_bit_tree(&mut self, probs: &mut [u16]) -> i32 {
         let mut symbol = 1;
+        let len = probs.len() as i32;
         loop {
             symbol = (symbol << 1) | self.decode_bit(&mut probs[symbol as usize]);
-            if symbol >= probs.len() as i32 {
+            if symbol >= len {
                 break;
             }
         }
-        symbol - probs.len() as i32
+        symbol - len
     }
 
+    #[inline(always)]
     pub(crate) fn decode_reverse_bit_tree(&mut self, probs: &mut [u16]) -> i32 {
         let mut symbol = 1;
         let mut i = 0;
         let mut result = 0;
+        let len = probs.len() as i32;
         loop {
             let bit = self.decode_bit(&mut probs[symbol as usize]);
             symbol = (symbol << 1) | bit;
             result |= bit << i;
             i += 1;
-            if symbol >= probs.len() as i32 {
+            if symbol >= len {
                 break;
             }
         }
@@ -444,11 +448,24 @@ impl<T: Read> RangeReader for T {
 impl RangeReader for RangeDecoderBuffer {
     #[inline(always)]
     fn read_u8(&mut self) -> u8 {
-        // Out of bound reads return an 1, which is fine, since the
+        // Out of bound reads return 1, which is fine, since the
         // LZMA reader will then throw a "dist overflow" error.
         // Not returning an error results in code that can be better
         // optimized in the hot path and overall 10% better decoding
         // performance.
+        //
+        // SAFETY: When optimization is enabled, we use unchecked access
+        // for the common case where pos < buf.len(). The LZMA algorithm
+        // guarantees we won't read past the buffer in valid streams, and for
+        // invalid streams, the decoder will catch the error via dist overflow.
+        #[cfg(feature = "optimization")]
+        let byte = if self.pos < self.buf.len() {
+            // SAFETY: We just verified pos < buf.len()
+            unsafe { *self.buf.get_unchecked(self.pos) }
+        } else {
+            1
+        };
+        #[cfg(not(feature = "optimization"))]
         let byte = *self.buf.get(self.pos).unwrap_or(&1);
         self.pos += 1;
         byte

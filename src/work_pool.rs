@@ -218,8 +218,11 @@ where
                         }
                     }
 
-                    // If the work queue has capacity, try to read more from the source.
-                    if self.work_queue.len() < 2 {
+                    // If the work queue is running low, try to read more from the source.
+                    // Keep enough work queued to keep workers busy (num_workers * 2 allows
+                    // for some overlap between completing and starting work).
+                    let queue_capacity = (self.num_workers as usize).saturating_mul(2).max(2);
+                    if self.work_queue.len() < queue_capacity {
                         match self.dispatch_next_work(&mut next_work_function) {
                             Ok(true) => {
                                 // Successfully read and dispatched a chunk, loop to continue.
@@ -337,11 +340,14 @@ where
         let queue_len = self.work_queue.len();
 
         // Spawn a new worker if:
-        // 1. There's work in the queue
-        // 2. All current workers are busy (active == spawned)
+        // 1. There's work in the queue that could benefit from more workers
+        // 2. We have more queued work than idle workers (queued > spawned - active)
         // 3. We haven't reached the maximum worker count
-        if queue_len > 0 && active_workers == spawned_workers && spawned_workers < self.num_workers
-        {
+        //
+        // This ensures we scale up workers when there's enough work to keep them busy,
+        // but don't over-spawn when workers are idle.
+        let idle_workers = spawned_workers.saturating_sub(active_workers);
+        if queue_len as u32 > idle_workers && spawned_workers < self.num_workers {
             self.spawn_worker_thread();
         }
     }

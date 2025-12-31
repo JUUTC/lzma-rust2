@@ -20,22 +20,27 @@ pub(crate) struct State {
 }
 
 impl State {
+    #[inline(always)]
     pub(crate) fn new() -> Self {
         Self { state: 0 }
     }
 
+    #[inline(always)]
     pub(crate) fn reset(&mut self) {
         self.state = LIT_LIT;
     }
 
+    #[inline(always)]
     pub(crate) fn get(&self) -> u8 {
         self.state
     }
 
+    #[inline(always)]
     pub(crate) fn set(&mut self, other: State) {
         self.state = other.state;
     }
 
+    #[inline(always)]
     pub(crate) fn update_literal(&mut self) {
         if self.state <= SHORTREP_LIT_LIT {
             self.state = LIT_LIT;
@@ -46,6 +51,7 @@ impl State {
         }
     }
 
+    #[inline(always)]
     pub(crate) fn update_match(&mut self) {
         self.state = if self.state < LIT_STATES {
             LIT_MATCH
@@ -54,6 +60,7 @@ impl State {
         };
     }
 
+    #[inline(always)]
     pub(crate) fn update_long_rep(&mut self) {
         self.state = if self.state < LIT_STATES {
             LIT_LONGREP
@@ -62,6 +69,7 @@ impl State {
         };
     }
 
+    #[inline(always)]
     pub(crate) fn update_short_rep(&mut self) {
         self.state = if self.state < LIT_STATES {
             LIT_SHORTREP
@@ -70,12 +78,14 @@ impl State {
         };
     }
 
+    #[inline(always)]
     pub(crate) fn is_literal(&self) -> bool {
         self.state < LIT_STATES
     }
 }
 
 impl From<u8> for State {
+    #[inline(always)]
     fn from(s: u8) -> Self {
         Self { state: s }
     }
